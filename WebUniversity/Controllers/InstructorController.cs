@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using WebUniversity.Data;
 using WebUniversity.Models;
 using WebUniversity.Models.ViewModels;
+using WebUniversity.Models.SchoolViewModels;
 
 namespace WebUniversity.Controllers
 {
@@ -23,18 +24,23 @@ namespace WebUniversity.Controllers
         // GET: Instructor
         public async Task<IActionResult> Index(int? id, int? courseID)
         {
+            // Eager loading, give me all the info at once
             var viewModel = new InstructorIndexData();
+            
             viewModel.Instructors = await _context.Instructors
             .Include(i => i.OfficeAssignment)
             .Include(i => i.CourseAssignments)
+            // ThenInclude infers that it is off of course assignments
             .ThenInclude(i => i.Course)
             .ThenInclude(i => i.Enrollments)
             .ThenInclude(i => i.Student)
+            // Need to start back from course assignment 
             .Include(i => i.CourseAssignments)
             .ThenInclude(i => i.Course)
             .ThenInclude(i => i.Department)
+            // Read only representation, don't set up tracking for editing.
             .AsNoTracking()
-           .OrderBy(i => i.LastName)
+            .OrderBy(i => i.LastName)
             .ToListAsync();
             if (id != null)
             {
@@ -100,7 +106,9 @@ namespace WebUniversity.Controllers
                 return NotFound();
             }
 
-            var instructor = await _context.Instructors.SingleOrDefaultAsync(m => m.ID == id);
+            var instructor = await _context.Instructors
+                .AsNoTracking()
+                .SingleOrDefaultAsync(m => m.ID == id);
             if (instructor == null)
             {
                 return NotFound();
@@ -108,39 +116,45 @@ namespace WebUniversity.Controllers
             return View(instructor);
         }
 
-        // POST: Instructor/Edit/5
-        // To protect from overposting attacks, please enable the specific properties you want to bind to, for 
-        // more details see http://go.microsoft.com/fwlink/?LinkId=317598.
-        [HttpPost]
+        // POST: Instructors/Edit/5
+        // To protect from overposting attacks, please enable the specific properties you want to bind
+        //to, for more details see http://go.microsoft.com/fwlink/?LinkId=317598.
+        [HttpPost, ActionName("Edit")]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, [Bind("ID,LastName,FirstMidName,HireDate")] Instructor instructor)
+        public async Task<IActionResult> EditPost(int? id)
         {
-            if (id != instructor.ID)
+            if (id == null)
             {
                 return NotFound();
             }
-
-            if (ModelState.IsValid)
+            var instructorToUpdate = await _context.Instructors
+            .Include(i => i.OfficeAssignment)
+            .Include(i => i.CourseAssignments)
+            .ThenInclude(i => i.Course)
+            .SingleOrDefaultAsync(s => s.ID == id);
+            if (await TryUpdateModelAsync<Instructor>(
+            instructorToUpdate,
+            "",
+            i => i.FirstMidName, i => i.LastName, i => i.HireDate, i => i.OfficeAssignment))
             {
+                if (String.IsNullOrWhiteSpace(instructorToUpdate.OfficeAssignment?.Location))
+                {
+                    instructorToUpdate.OfficeAssignment = null;
+                }
                 try
                 {
-                    _context.Update(instructor);
                     await _context.SaveChangesAsync();
                 }
-                catch (DbUpdateConcurrencyException)
+                catch (DbUpdateException /* ex */)
                 {
-                    if (!InstructorExists(instructor.ID))
-                    {
-                        return NotFound();
-                    }
-                    else
-                    {
-                        throw;
-                    }
+                    //Log the error (uncomment ex variable name and write a log.)
+                    ModelState.AddModelError("", "Unable to save changes. " +
+                     "Try again, and if the problem persists, " +
+                    "see your system administrator.");
                 }
                 return RedirectToAction("Index");
             }
-            return View(instructor);
+            return View(instructorToUpdate);
         }
 
         // GET: Instructor/Delete/5
@@ -175,6 +189,60 @@ namespace WebUniversity.Controllers
         private bool InstructorExists(int id)
         {
             return _context.Instructors.Any(e => e.ID == id);
+        }
+
+        private void PopulateAssignedCourseData(Instructor instructor)
+        {
+            var allCourses = _context.Courses;
+            var instructorCourses = new HashSet<int>(instructor.CourseAssignments.Select(c =>
+           c.CourseID));
+            var viewModel = new List<AssignedCourseData>();
+            foreach (var course in allCourses)
+            {
+                viewModel.Add(new AssignedCourseData
+                {
+                    CourseID = course.CourseID,
+                    Title = course.Title,
+                    Assigned = instructorCourses.Contains(course.CourseID)
+                });
+            }
+            ViewData["Courses"] = viewModel;
+        }
+
+        private void UpdateInstructorCourses(string[] selectedCourses, Instructor instructorToUpdate)
+        {
+            if (selectedCourses == null)
+            {
+                instructorToUpdate.CourseAssignments = new List<CourseAssignment>();
+                return;
+            }
+            var selectedCoursesHS = new HashSet<string>(selectedCourses);
+            var instructorCourses = new HashSet<int>
+            (instructorToUpdate.CourseAssignments.Select(c => c.Course.CourseID));
+            foreach (var course in _context.Courses)
+            {
+                if (selectedCoursesHS.Contains(course.CourseID.ToString()))
+                {
+                    if (!instructorCourses.Contains(course.CourseID))
+                    {
+                        instructorToUpdate.CourseAssignments.Add(new CourseAssignment
+                        {
+                            InstructorID =
+                       instructorToUpdate.ID,
+                            CourseID = course.CourseID
+                        });
+                    }
+                }
+                else
+                {
+                    if (instructorCourses.Contains(course.CourseID))
+                    {
+                        CourseAssignment courseToRemove =
+                       instructorToUpdate.CourseAssignments.SingleOrDefault(i => i.CourseID == course.CourseID);
+                        _context.Remove(courseToRemove);
+                    }
+                }
+            }
         }
     }
 }

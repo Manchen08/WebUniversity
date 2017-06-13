@@ -111,50 +111,52 @@ namespace WebUniversity.Controllers
                 return NotFound();
             }
 
-            var course = await _context.Courses.SingleOrDefaultAsync(m => m.CourseID == id);
+            var course = await _context.Courses
+                .AsNoTracking()
+                .SingleOrDefaultAsync(m => m.CourseID == id);
             if (course == null)
             {
                 return NotFound();
             }
-            ViewData["DepartmentID"] = new SelectList(_context.Departments, "DepartmentID", "DepartmentID", course.DepartmentID);
+            PopulateDepartmentsDropDownList(course.DepartmentID);
             return View(course);
         }
 
         // POST: Course/Edit/5
         // To protect from overposting attacks, please enable the specific properties you want to bind to, for 
         // more details see http://go.microsoft.com/fwlink/?LinkId=317598.
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, [Bind("CourseID,Title,Credits,DepartmentID")] Course course)
-        {
-            if (id != course.CourseID)
-            {
-                return NotFound();
-            }
+        //[HttpPost]
+        //[ValidateAntiForgeryToken]
+        //public async Task<IActionResult> Edit(int id, [Bind("CourseID,Title,Credits,DepartmentID")] Course course)
+        //{
+        //    if (id != course.CourseID)
+        //    {
+        //        return NotFound();
+        //    }
 
-            if (ModelState.IsValid)
-            {
-                try
-                {
-                    _context.Update(course);
-                    await _context.SaveChangesAsync();
-                }
-                catch (DbUpdateConcurrencyException)
-                {
-                    if (!CourseExists(course.CourseID))
-                    {
-                        return NotFound();
-                    }
-                    else
-                    {
-                        throw;
-                    }
-                }
-                return RedirectToAction("Index");
-            }
-            ViewData["DepartmentID"] = new SelectList(_context.Departments, "DepartmentID", "DepartmentID", course.DepartmentID);
-            return View(course);
-        }
+        //    if (ModelState.IsValid)
+        //    {
+        //        try
+        //        {
+        //            _context.Update(course);
+        //            await _context.SaveChangesAsync();
+        //        }
+        //        catch (DbUpdateConcurrencyException)
+        //        {
+        //            if (!CourseExists(course.CourseID))
+        //            {
+        //                return NotFound();
+        //            }
+        //            else
+        //            {
+        //                throw;
+        //            }
+        //        }
+        //        return RedirectToAction("Index");
+        //    }
+        //    PopulateDepartmentsDropDownList(course.DepartmentID);
+        //    return View(course);
+        //}
 
         // GET: Course/Delete/5
         public async Task<IActionResult> Delete(int? id)
